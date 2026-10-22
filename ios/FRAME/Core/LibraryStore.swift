@@ -23,7 +23,7 @@ final class LibraryStore: ObservableObject {
     }
     func set(mediaKey: String, field: String, value: JSONValue) throws {
         var queue = pending
-        queue.append(LibraryMutation(mutationID: UUID(), mediaKey: mediaKey, field: field, value: value, expectedRevision: 0))
+        queue.append(LibraryMutation(mutationID: UUID(), mediaKey: mediaKey, field: field, value: value, expectedRevision: -1))
         try save(records: records, pending: queue)
     }
     func merge(_ changes: [LibraryField]) throws {
@@ -36,11 +36,31 @@ final class LibraryStore: ObservableObject {
         if record.revision >= (next[record.identity]?.revision ?? 0) { next[record.identity] = record }
         try save(records: next, pending: pending.filter { $0.id != id })
     }
-    func nextMutation() -> LibraryMutation? { nil }
+    func nextMutation() -> LibraryMutation? {
+        guard var first = pending.first else { return nil }
+        if first.expectedRevision < 0 { first.expectedRevision = records[first.mediaKey + "/" + first.field]?.revision ?? 0 }
+        return first
+    }
+    // Freeze the request on disk before sending. A lost HTTP response must replay
+    // the identical payload even after another pull or an application restart.
+    func prepareNextMutation() throws -> LibraryMutation? {
+        guard let next = nextMutation() else { return nil }
+        if pending.first?.expectedRevision == -1 {
+            var queue = pending; queue[0] = next
+            try save(records:records,pending:queue)
+        }
+        return next
+    }
+    func rebase(_ id: UUID, record: LibraryField) throws {
+        var next = records; var queue = pending
+        if record.revision >= (next[record.identity]?.revision ?? 0) { next[record.identity] = record }
+        if let index = queue.firstIndex(where: { $0.id == id }) { queue[index].expectedRevision = record.revision }
+        try save(records:next,pending:queue)
+    }
     var mediaKeys: [String] { Array(Set(records.values.map(\.mediaKey) + pending.map(\.mediaKey))).sorted() }
     var savedMedia: [Media] {
         mediaKeys.compactMap { key in
-            let active = value(key,"watchlist")?.bool == true || value(key,"watched")?.bool == true || value(key,"rating")?.int != nil || hasWatchedEpisodes(key)
+            let active = value(key,"watchlist")?.bool == true || value(key,"watched")?.bool == true || value(key,"rating")?.int != nil || !(value(key,"review")?.string ?? "").isEmpty || hasWatchedEpisodes(key)
             return active ? Media.saved(value(key,"media")) : nil
         }.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }

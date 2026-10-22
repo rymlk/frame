@@ -67,7 +67,7 @@ export function createApp({config,gateway,catalogue}) {
       }
       if(path==='/v1/reports'&&req.method==='POST'){const b=await body(req);await gateway.rpc('report_post',{p_post_id:b.postID,p_reason:b.reason},bearer);return send(res,204);}
       if(path==='/v1/blocks'){
-        if(req.method==='GET')return send(res,200,await gateway.rows('blocks',`owner_id=eq.${encodeURIComponent(user.id)}&select=blocked_id`,bearer));
+        if(req.method==='GET')return send(res,200,await gateway.rpc('blocked_users',{},bearer));
         if(req.method==='POST'){const b=await body(req);await gateway.rpc('set_block',{p_user_id:b.userID,p_blocked:b.blocked},bearer);return send(res,204);}
       }
       if(path==='/v1/moderation'){

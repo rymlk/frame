@@ -125,7 +125,7 @@ struct CommunityPost: Decodable, Identifiable {
     let createdAt: String; let nickname: String; let avatar: String
     enum CodingKeys: String, CodingKey { case id, authorID = "author_id", mediaKey = "media_key", content, rating, createdAt = "created_at", nickname, avatar }
 }
-struct BlockedUser: Decodable, Identifiable { let blockedID: UUID; var id: UUID { blockedID }; enum CodingKeys: String,CodingKey { case blockedID = "blocked_id" } }
+struct BlockedUser: Decodable, Identifiable { let blockedID: UUID; let nickname: String?; var id: UUID { blockedID }; enum CodingKeys: String,CodingKey { case blockedID = "blocked_id", nickname } }
 struct Empty: Decodable {}
 
 struct UserFacingError: LocalizedError {

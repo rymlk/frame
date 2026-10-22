@@ -69,4 +69,20 @@ final class LibraryTests: XCTestCase {
         XCTAssertEqual(session.refreshToken, "r")
         XCTAssertGreaterThan(session.expiresAt, Date().timeIntervalSince1970 + 3500)
     }
+
+    func testLostResponseRetriesExactlyTheSameMutationAfterRestartAndPull() throws {
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let account = UUID()
+        let store = try LibraryStore(directory: dir, accountID: account)
+        try store.set(mediaKey: "movie:1", field: "watchlist", value: .bool(true))
+        let sent = try XCTUnwrap(store.prepareNextMutation())
+        XCTAssertEqual(sent.expectedRevision, 0)
+        let restart = try LibraryStore(directory: dir, accountID: account)
+        try restart.merge([LibraryField(mediaKey: "movie:1", field: "watchlist", value: .bool(true), revision: 1)])
+        XCTAssertEqual(try restart.prepareNextMutation(), sent)
+        try restart.rebase(sent.mutationID, record: LibraryField(mediaKey: "movie:1", field: "watchlist", value: .bool(false), revision: 2))
+        XCTAssertEqual(try restart.prepareNextMutation()?.expectedRevision, 2)
+        XCTAssertEqual(restart.value("movie:1", "watchlist"), .bool(true))
+    }
 }

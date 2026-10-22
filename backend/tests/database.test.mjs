@@ -101,6 +101,7 @@ test('communauté: consentement, prémodération, signalement, blocage et rôles
     await as(db,bob);
     await rpc(db,'report_post',[post.id,'Insulte']);
     await rpc(db,'set_block',[alice,true]);
+    assert.equal((await rpc(db,'blocked_users'))[0].nickname,'Alice');
     assert.deepEqual((await rpc(db,'community_feed',[null])).map(p=>p.author_id),[bob]);
     await as(db,alice);
     assert.deepEqual((await rpc(db,'community_feed',[null])).map(p=>p.author_id),[alice]);

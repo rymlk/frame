@@ -177,6 +177,12 @@ begin
   insert into public.reports(reporter_id,post_id,reason) values(auth.uid(),p_post_id,trim(p_reason)) on conflict(reporter_id,post_id) do nothing;
 end $$;
 
+create function public.blocked_users() returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select coalesce(jsonb_agg(jsonb_build_object('blocked_id',b.blocked_id,'nickname',coalesce(p.nickname,'Utilisateur bloqué'))),'[]'::jsonb)
+  from public.blocks b left join public.profiles p on p.id=b.blocked_id where b.owner_id=auth.uid();
+$$;
+
 create function public.moderation_queue() returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 begin
@@ -202,9 +208,9 @@ end $$;
 
 revoke all on function public.apply_library_mutation(jsonb),public.save_profile(text,text,text,boolean),
   public.submit_post(text,text,integer),public.community_feed(text),public.set_block(uuid,boolean),
-  public.report_post(uuid,text),public.moderation_queue(),public.moderate_post(uuid,text) from public,anon;
+  public.report_post(uuid,text),public.blocked_users(),public.moderation_queue(),public.moderate_post(uuid,text) from public,anon;
 grant execute on function public.apply_library_mutation(jsonb),public.save_profile(text,text,text,boolean),
   public.submit_post(text,text,integer),public.community_feed(text),public.set_block(uuid,boolean),
-  public.report_post(uuid,text),public.moderation_queue(),public.moderate_post(uuid,text) to authenticated;
+  public.report_post(uuid,text),public.blocked_users(),public.moderation_queue(),public.moderate_post(uuid,text) to authenticated;
 
 commit;
