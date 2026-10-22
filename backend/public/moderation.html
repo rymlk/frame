@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FRAME · Modération</title><link rel="stylesheet" href="/moderation.css"><script defer src="/moderation.js"></script></head>
+<body><main><header><p>FRAME.</p><h1>Modération</h1><p>Vérifier les messages avant leur publication et traiter les signalements.</p></header>
+<section id="login"><form id="email-form"><label for="email">E-mail du compte modérateur</label><input id="email" type="email" autocomplete="email" required><button>Recevoir mon code</button></form>
+<form id="code-form" hidden><label for="code">Code reçu par e-mail</label><input id="code" inputmode="numeric" autocomplete="one-time-code" required><button>Se connecter</button></form></section>
+<p id="status" role="status" aria-live="polite"></p>
+<section id="console" hidden><div class="controls"><button id="reload">Actualiser</button><button id="logout">Se déconnecter</button></div><div id="posts"></div></section>
+<footer><p>Les décisions prennent effet immédiatement. N’approuver que les messages conformes aux règles de FRAME.</p></footer>
+</main></body></html>

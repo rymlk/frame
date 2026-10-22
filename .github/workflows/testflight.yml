@@ -1,0 +1,87 @@
+name: Prepare TestFlight build
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: Upload the signed build to App Store Connect
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+  archive:
+    needs: verify
+    runs-on: macos-15
+    timeout-minutes: 35
+    environment: testflight
+    env:
+      FRAME_API_HOST: ${{ vars.FRAME_API_HOST }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      FRAME_BUNDLE_ID: ${{ vars.FRAME_BUNDLE_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check configuration
+        run: |
+          python3 - <<'PY'
+          import os,re
+          for key in ['FRAME_API_HOST','APPLE_TEAM_ID','FRAME_BUNDLE_ID','ASC_KEY_ID','ASC_ISSUER_ID','ASC_PRIVATE_KEY']:
+              if not os.environ.get(key): raise SystemExit('Missing GitHub environment value: '+key)
+          if not re.fullmatch(r'[A-Za-z0-9.-]+',os.environ['FRAME_API_HOST']): raise SystemExit('FRAME_API_HOST must contain a host only')
+          if not re.fullmatch(r'[A-Za-z0-9.-]+',os.environ['FRAME_BUNDLE_ID']): raise SystemExit('Invalid bundle identifier')
+          PY
+      - name: Select Xcode 26 or newer
+        run: |
+          APP=$(find /Applications -maxdepth 1 -name 'Xcode_26*.app' | sort -V | tail -1)
+          if [ -n "$APP" ]; then sudo xcode-select -s "$APP/Contents/Developer"; fi
+          xcodebuild -version
+          MAJOR=$(xcodebuild -version | head -1 | awk '{print $2}' | cut -d. -f1)
+          test "$MAJOR" -ge 26
+      - name: Prepare signing and export settings
+        run: |
+          python3 - <<'PY'
+          import os,pathlib,plistlib
+          root=pathlib.Path(os.environ['RUNNER_TEMP'])/'frame-signing'
+          root.mkdir(mode=0o700)
+          key=root/('AuthKey_'+os.environ['ASC_KEY_ID']+'.p8')
+          key.write_text(os.environ['ASC_PRIVATE_KEY'])
+          key.chmod(0o600)
+          pathlib.Path('ios/Config.local.xcconfig').write_text('FRAME_API_HOST = '+os.environ['FRAME_API_HOST']+'\nDEVELOPMENT_TEAM = '+os.environ['APPLE_TEAM_ID']+'\nPRODUCT_BUNDLE_IDENTIFIER = '+os.environ['FRAME_BUNDLE_ID']+'\n')
+          with open(root/'ExportOptions.plist','wb') as f:
+              plistlib.dump({'method':'app-store-connect','signingStyle':'automatic','teamID':os.environ['APPLE_TEAM_ID'],'uploadSymbols':True,'manageAppVersionAndBuildNumber':False},f)
+          PY
+          python3 scripts/generate_xcode.py
+      - name: Verify public API is reachable
+        run: curl --fail --silent --show-error "https://$FRAME_API_HOST/health"
+      - name: Create signed archive
+        run: |
+          xcodebuild archive -project ios/FRAME.xcodeproj -scheme FRAME -configuration Release -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/FRAME.xcarchive" -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/frame-signing/AuthKey_$ASC_KEY_ID.p8" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER"
+      - name: Export IPA
+        run: |
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/FRAME.xcarchive" -exportPath "$RUNNER_TEMP/frame-export" -exportOptionsPlist "$RUNNER_TEMP/frame-signing/ExportOptions.plist" -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/frame-signing/AuthKey_$ASC_KEY_ID.p8" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Validate with Apple
+        env:
+          API_PRIVATE_KEYS_DIR: ${{ runner.temp }}/frame-signing
+        run: xcrun altool --validate-app -f "$RUNNER_TEMP/frame-export/FRAME.ipa" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+      - name: Upload to App Store Connect
+        if: inputs.upload
+        env:
+          API_PRIVATE_KEYS_DIR: ${{ runner.temp }}/frame-signing
+        run: xcrun altool --upload-app -f "$RUNNER_TEMP/frame-export/FRAME.ipa" -t ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FRAME-signed-build
+          path: ${{ runner.temp }}/frame-export/*.ipa
+          retention-days: 7
+      - name: Remove signing key
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os,pathlib,shutil
+          shutil.rmtree(pathlib.Path(os.environ['RUNNER_TEMP'])/'frame-signing',ignore_errors=True)
+          pathlib.Path('ios/Config.local.xcconfig').unlink(missing_ok=True)
+          PY
