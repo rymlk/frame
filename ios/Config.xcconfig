@@ -1,0 +1,5 @@
+// Override these values in Config.local.xcconfig (never commit signing credentials).
+FRAME_API_HOST =
+DEVELOPMENT_TEAM =
+PRODUCT_BUNDLE_IDENTIFIER = com.rymlk.frame
+#include? "Config.local.xcconfig"
