@@ -19,7 +19,11 @@ final class FrameAPI: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: configCacheKey), let saved = try? JSONDecoder().decode(PublicConfig.self,from:data), Self.valid(saved) { config = saved }
     }
     static func valid(_ config: PublicConfig) -> Bool {
-        [config.supabaseURL,config.termsURL,config.privacyURL,config.supportURL].allSatisfy { $0.scheme == "https" && $0.host != nil && $0.user == nil && $0.password == nil } && !config.supabaseKey.isEmpty
+        let urls: [URL] = [config.supabaseURL,config.termsURL,config.privacyURL,config.supportURL]
+        for url in urls {
+            guard url.scheme == "https", url.host != nil, url.user == nil, url.password == nil else { return false }
+        }
+        return !config.supabaseKey.isEmpty
     }
     func loadConfig() async throws {
         let value: PublicConfig = try await request("/v1/config")
