@@ -80,7 +80,7 @@ project_config = configurations('project', {
     'LD_RUNPATH_SEARCH_PATHS': '$(inherited) @executable_path/Frameworks',
     'ASSETCATALOG_COMPILER_APPICON_NAME': 'AppIcon', 'ENABLE_USER_SCRIPT_SANDBOXING': 'YES',
 }, config)
-app_config = configurations('app', {'PRODUCT_NAME': '$(TARGET_NAME)'})
+app_config = configurations('app', {'PRODUCT_NAME': '$(TARGET_NAME)', 'CODE_SIGN_ENTITLEMENTS': 'FRAME/FRAME.entitlements'})
 test_config = configurations('tests', {
     'PRODUCT_NAME': '$(TARGET_NAME)', 'PRODUCT_BUNDLE_IDENTIFIER': 'com.rymlk.frame.tests',
     'TEST_HOST': '$(BUILT_PRODUCTS_DIR)/FRAME.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FRAME',
