@@ -96,10 +96,11 @@ final class AppModel: ObservableObject {
         }
     }
     func signOut() async {
+        let currentLibrary = library
         do {
             syncTask?.cancel()
             try await api.signOut()
-            try library?.erase(); changeAccount()
+            try currentLibrary?.erase(); changeAccount()
         } catch { message = error.localizedDescription }
     }
     func deleteAccount() async {

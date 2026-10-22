@@ -3,8 +3,8 @@ services:
     name: frame-api
     runtime: docker
     plan: starter
-    rootDir: backend
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     healthCheckPath: /health
     autoDeployTrigger: checksPass
     envVars:

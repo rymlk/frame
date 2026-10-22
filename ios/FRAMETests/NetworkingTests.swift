@@ -48,4 +48,20 @@ final class NetworkingTests: XCTestCase {
             XCTFail("Expected authentication error")
         } catch { XCTAssertEqual(error.localizedDescription,"Connecte-toi pour continuer.") }
     }
+
+    func testSignOutAlwaysClearsLocalCredentialsWhenNetworkFails() async throws {
+        let host = UUID().uuidString.lowercased() + ".test"
+        let vault = SessionVault(service:"com.frame.auth." + host)
+        let data = Data(#"{"access_token":"a","refresh_token":"r","expires_at":9999999999,"user":{"id":"11111111-1111-4111-8111-111111111111"}}"#.utf8)
+        try vault.save(JSONDecoder().decode(AuthSession.self,from:data))
+        defer { try? vault.delete(); StubURLProtocol.handler = nil }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [StubURLProtocol.self]
+        StubURLProtocol.handler = { _ in throw URLError(.notConnectedToInternet) }
+        let api = FrameAPI(baseURL:URL(string:"https://" + host)!,session:URLSession(configuration:config))
+        XCTAssertNotNil(api.session)
+        try await api.signOut()
+        XCTAssertNil(api.session)
+        XCTAssertNil(try vault.load())
+    }
 }

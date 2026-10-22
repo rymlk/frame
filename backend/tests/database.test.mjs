@@ -21,6 +21,7 @@ async function database() {
     grant execute on all functions in schema auth to authenticated;
     insert into auth.users values ('${alice}'), ('${bob}'), ('${admin}');`);
   await db.exec(await readFile(new URL('../../supabase/migrations/202610220001_frame.sql', import.meta.url), 'utf8'));
+  await db.exec('update public.frame_settings set community_enabled=true');
   return db;
 }
 async function as(db, id, moderator = false) {
@@ -132,4 +133,27 @@ test('suppression de compte: données privées, messages et signalements supprim
     await assert.rejects(db.query('select * from public.profiles'),/permission denied/);
     await assert.rejects(rpc(db,'community_feed',[null]),/permission denied/);
   } finally { await db.close(); }
+});
+
+test('la fermeture communauté est imposée dans PostgreSQL et les signalements ne dépendent pas des 60 derniers posts',async()=>{
+  const db=await database();
+  try {
+    await as(db,alice);
+    await rpc(db,'save_profile',['Alice','','indigo',true]);
+    const post=await rpc(db,'submit_post',['movie:42','Avis ancien',4]);
+    await db.exec('reset role');
+    await db.query(`update public.posts set status='approved',created_at=now()-interval '1 day' where id=$1`,[post.id]);
+    await db.query(`insert into public.posts(author_id,media_key,content,status) select $1,'tv:1','Autre avis','approved' from generate_series(1,61)`,[alice]);
+    await as(db,bob);
+    assert.equal((await rpc(db,'community_feed',[null])).some(p=>p.id===post.id),false);
+    assert.equal((await rpc(db,'community_feed',['movie:42'])).length,1);
+    await rpc(db,'report_post',[post.id,'Signalement légitime']);
+    await db.exec('reset role');
+    await db.exec('update public.frame_settings set community_enabled=false');
+    await as(db,alice);
+    await assert.rejects(rpc(db,'submit_post',['tv:1','Contournement',null]),/communauté.*indisponible/i);
+    await assert.rejects(rpc(db,'community_feed',[null]),/communauté.*indisponible/i);
+    await assert.rejects(rpc(db,'report_post',[post.id,'Contournement']),/communauté.*indisponible/i);
+    await assert.rejects(db.exec('update public.frame_settings set community_enabled=true'),/permission denied/);
+  }finally{await db.close();}
 });

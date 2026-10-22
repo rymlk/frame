@@ -1,5 +1,21 @@
 begin;
 
+-- A server flag alone is insufficient: authenticated users can call PostgREST.
+create table public.frame_settings (
+  singleton boolean primary key default true check(singleton),
+  community_enabled boolean not null default false
+);
+insert into public.frame_settings(singleton) values(true);
+alter table public.frame_settings enable row level security;
+revoke all on public.frame_settings from public,anon,authenticated;
+create function public.require_community_open() returns void
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  if not coalesce((select community_enabled from public.frame_settings where singleton),false)
+    then raise exception 'Communauté temporairement indisponible'; end if;
+end $$;
+revoke all on function public.require_community_open() from public,anon,authenticated;
+
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   nickname text not null default 'Spectateur' check (length(nickname) between 1 and 24),
@@ -134,6 +150,7 @@ create function public.submit_post(p_media_key text,p_content text,p_rating inte
 language plpgsql security definer set search_path = '' as $$
 declare u uuid:=auth.uid(); result public.posts%rowtype;
 begin
+  perform public.require_community_open();
   if u is null then raise exception 'Authentification requise'; end if;
   perform 1 from auth.users where id=u for update;
   if not exists(select 1 from public.profiles where id=u and accepted_terms_version='2026-10-22') then
@@ -148,15 +165,18 @@ begin
 end $$;
 
 create function public.community_feed(p_media_key text default null) returns jsonb
-language sql stable security definer set search_path = '' as $$
-  select coalesce(jsonb_agg(to_jsonb(feed)), '[]'::jsonb) from (
+language plpgsql stable security definer set search_path = '' as $$
+begin
+  perform public.require_community_open();
+  return (select coalesce(jsonb_agg(to_jsonb(feed)), '[]'::jsonb) from (
     select p.id,p.author_id,p.media_key,p.content,p.rating,p.created_at,pr.nickname,pr.avatar
     from public.posts p join public.profiles pr on pr.id=p.author_id
     where auth.uid() is not null and p.status='approved' and (p_media_key is null or p.media_key=p_media_key)
     and not exists(select 1 from public.blocks b where (b.owner_id=auth.uid() and b.blocked_id=p.author_id)
       or (b.blocked_id=auth.uid() and b.owner_id=p.author_id))
     order by p.created_at desc,p.id limit 60
-  ) feed;
+  ) feed);
+end
 $$;
 
 create function public.set_block(p_user_id uuid,p_blocked boolean) returns void
@@ -170,9 +190,12 @@ end $$;
 create function public.report_post(p_post_id uuid,p_reason text) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
+  perform public.require_community_open();
   if auth.uid() is null then raise exception 'Authentification requise'; end if;
   if length(trim(p_reason)) not between 1 and 500 or p_reason is null then raise exception 'Motif invalide'; end if;
-  if not exists(select 1 from jsonb_array_elements(public.community_feed(null)) item where item->>'id'=p_post_id::text)
+  if not exists(select 1 from public.posts p where p.id=p_post_id and p.status='approved'
+    and not exists(select 1 from public.blocks b where (b.owner_id=auth.uid() and b.blocked_id=p.author_id)
+      or (b.blocked_id=auth.uid() and b.owner_id=p.author_id)))
     then raise exception 'Message introuvable'; end if;
   insert into public.reports(reporter_id,post_id,reason) values(auth.uid(),p_post_id,trim(p_reason)) on conflict(reporter_id,post_id) do nothing;
 end $$;

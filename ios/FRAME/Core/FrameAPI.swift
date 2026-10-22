@@ -1,6 +1,12 @@
 import Foundation
 import Combine
 
+private struct HTTPFailure: LocalizedError {
+    let status: Int
+    let message: String
+    var errorDescription: String? { message }
+}
+
 @MainActor
 final class FrameAPI: ObservableObject {
     let baseURL: URL?
@@ -51,9 +57,9 @@ final class FrameAPI: ObservableObject {
         guard (200..<300).contains(response.statusCode) else {
             let payload = try? JSONSerialization.jsonObject(with:data) as? [String:Any]
             let message = payload?["error"] as? String
-            if response.statusCode == 401 { throw UserFacingError(message:"Ta session a expiré. Reconnecte-toi.") }
+            if response.statusCode == 401 { throw HTTPFailure(status:401,message:"Ta session a expiré. Reconnecte-toi.") }
             if response.statusCode == 429 { throw UserFacingError(message:"Trop de demandes. Attends un instant avant de réessayer.") }
-            throw UserFacingError(message:message ?? "La demande n’a pas abouti. Réessaie dans un instant.")
+            throw HTTPFailure(status:response.statusCode,message:message ?? "La demande n’a pas abouti. Réessaie dans un instant.")
         }
         return try JSONDecoder().decode(T.self,from:data.isEmpty ? Data("{}".utf8) : data)
     }
@@ -79,16 +85,27 @@ final class FrameAPI: ObservableObject {
         if current.expiresAt > Date().timeIntervalSince1970 + 60 { return current.accessToken }
         if let refreshTask { return try await refreshTask.value.accessToken }
         let task = Task<AuthSession, Error> { [self] in
-            let value: AuthSession = try await auth("token?grant_type=refresh_token",body:["refresh_token":current.refreshToken])
-            try vault.save(value); session = value; return value
+            do {
+                let value: AuthSession = try await auth("token?grant_type=refresh_token",body:["refresh_token":current.refreshToken])
+                try Task.checkCancellation()
+                try vault.save(value); session = value; return value
+            } catch {
+                if let failure = error as? HTTPFailure, failure.status == 400 || failure.status == 401 {
+                    try clearSession()
+                    throw UserFacingError(message:"Ta session a expiré. Reconnecte-toi pour retrouver ta collection.")
+                }
+                throw error
+            }
         }
         refreshTask = task
         defer { refreshTask = nil }
         return try await task.value.accessToken
     }
     func signOut() async throws {
-        let token = try await accessToken()
-        let _: Empty = try await auth("logout?scope=local",body:[:],token:token)
+        do {
+            let token = try await accessToken()
+            let _: Empty = try await auth("logout?scope=local",body:[:],token:token)
+        } catch { /* Offline sign-out still removes the local session. */ }
         try clearSession()
     }
     func clearSession() throws { refreshTask?.cancel(); refreshTask = nil; try vault.delete(); session = nil }

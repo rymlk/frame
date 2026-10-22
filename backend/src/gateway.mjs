@@ -19,6 +19,7 @@ export class SupabaseGateway {
       if(response.status===401)throw new APIError(401,'Session expirée. Reconnecte-toi.');
       if(response.status===429)throw new APIError(429,'Trop de demandes. Réessaie plus tard.');
       if(response.status===403)throw new APIError(403,'Accès refusé.');
+      if(data?.message==='Communauté temporairement indisponible')throw new APIError(503,'La communauté ouvrira prochainement.');
       // Database errors expose only known user-facing messages, never SQL details.
       const allowed=/^(Mutation invalide|Valeur invalide|Note invalide|Avis invalide|Épisode invalide|Média invalide|Profil invalide|Message invalide|Motif invalide|Blocage invalide|Statut invalide|Message introuvable|Accepte les conditions de la communauté|Trop de messages|mutation_id déjà utilisé)$/;
       if(allowed.test(data?.message||''))throw new APIError(400,data.message);
