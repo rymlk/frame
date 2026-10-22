@@ -85,4 +85,18 @@ final class LibraryTests: XCTestCase {
         XCTAssertEqual(try restart.prepareNextMutation()?.expectedRevision, 2)
         XCTAssertEqual(restart.value("movie:1", "watchlist"), .bool(true))
     }
+
+    func testBatchEpisodeProgressPersistsInOrder() throws {
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let account = UUID()
+        let store = try LibraryStore(directory:dir,accountID:account)
+        let changes: [(String,JSONValue)] = (1...100).map { ("episode:1:\($0)",.object(["watched":.bool(true),"runtime":.number(24)])) }
+        try store.setMany(mediaKey:"tv:1",changes:changes)
+        let restarted = try LibraryStore(directory:dir,accountID:account)
+        XCTAssertEqual(restarted.pending.count,100)
+        XCTAssertEqual(restarted.watchedEpisodes,100)
+        XCTAssertEqual(restarted.watchMinutes,2400)
+        XCTAssertEqual(restarted.pending.last?.field,"episode:1:100")
+    }
 }

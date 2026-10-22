@@ -135,8 +135,11 @@ struct SeasonView: View {
         processing = true; defer { processing = false; selected = nil }
         do {
             let previous: EarlierEpisodes = try await api.request("/api/earlier",query:[URLQueryItem(name:"type",value:"tv"),URLQueryItem(name:"id",value:String(media.id)),URLQueryItem(name:"season",value:String(episode.season)),URLQueryItem(name:"episode",value:String(episode.number))])
-            for item in previous.episodes { model.set(media,field:"episode:\(item.season):\(item.number)",value:.object(["watched":.bool(true),"runtime":item.runtime.map { .number(Double($0)) } ?? .null])) }
-            toggle(episode,true)
+            var changes: [(String,JSONValue)] = previous.episodes.map { item in
+                ("episode:\(item.season):\(item.number)",.object(["watched":.bool(true),"runtime":item.runtime.map { .number(Double($0)) } ?? .null]))
+            }
+            changes.append((episode.field,.object(["watched":.bool(true),"runtime":episode.runtime.map { .number(Double($0)) } ?? .null])))
+            model.setMany(media,changes:changes)
         } catch { model.message = error.localizedDescription }
     }
 }

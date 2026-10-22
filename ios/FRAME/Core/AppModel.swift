@@ -45,7 +45,11 @@ final class AppModel: ObservableObject {
         catch { if api.config == nil { message = error.localizedDescription } }
     }
     func loadProfile() async {
-        do { let value: Profile? = try await api.request("/v1/profile",authenticated:true); profile = value }
+        let account = api.session?.user.id
+        do {
+            let value: Profile? = try await api.request("/v1/profile",authenticated:true)
+            if api.session?.user.id == account { profile = value }
+        }
         catch { message = error.localizedDescription }
     }
     func requireAccount() -> Bool {
@@ -53,6 +57,9 @@ final class AppModel: ObservableObject {
         return library != nil
     }
     func set(_ media: Media, field: String, value: JSONValue, runtime: Int? = nil) {
+        setMany(media,changes:[(field,value)],runtime:runtime)
+    }
+    func setMany(_ media: Media, changes: [(String,JSONValue)], runtime: Int? = nil) {
         guard requireAccount(), let library else { return }
         do {
             var saved = media.savedValue
@@ -60,8 +67,8 @@ final class AppModel: ObservableObject {
                 if let minutes = runtime ?? library.value(media.key,"media")?["runtime"]?.int { object["runtime"] = .number(Double(minutes)) }
                 saved = .object(object)
             }
-            if library.value(media.key,"media") != saved { try library.set(mediaKey:media.key,field:"media",value:saved) }
-            try library.set(mediaKey:media.key,field:field,value:value); sync()
+            let metadata: [(String,JSONValue)] = library.value(media.key,"media") != saved ? [("media",saved)] : []
+            try library.setMany(mediaKey:media.key,changes:metadata + changes); sync()
         } catch { message = "Impossible d’enregistrer cette modification sur l’appareil." }
     }
     func sync() {
@@ -105,10 +112,11 @@ final class AppModel: ObservableObject {
     }
     func deleteAccount() async {
         struct Confirmation: Encodable { let confirmation = "SUPPRIMER" }
+        let currentLibrary = library
         do {
             syncTask?.cancel()
             let _: Empty = try await api.request("/v1/account",method:"DELETE",body:Confirmation())
-            try library?.erase(); try api.clearSession(); changeAccount()
+            try api.clearSession(); changeAccount(); try currentLibrary?.erase()
         } catch { message = error.localizedDescription }
     }
 }

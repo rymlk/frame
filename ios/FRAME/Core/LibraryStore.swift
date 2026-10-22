@@ -22,8 +22,11 @@ final class LibraryStore: ObservableObject {
         pending.last(where: { $0.mediaKey == mediaKey && $0.field == field })?.value ?? records[mediaKey + "/" + field]?.value
     }
     func set(mediaKey: String, field: String, value: JSONValue) throws {
+        try setMany(mediaKey:mediaKey,changes:[(field,value)])
+    }
+    func setMany(mediaKey: String, changes: [(String,JSONValue)]) throws {
         var queue = pending
-        queue.append(LibraryMutation(mutationID: UUID(), mediaKey: mediaKey, field: field, value: value, expectedRevision: -1))
+        queue += changes.map { LibraryMutation(mutationID:UUID(),mediaKey:mediaKey,field:$0.0,value:$0.1,expectedRevision:-1) }
         try save(records: records, pending: queue)
     }
     func merge(_ changes: [LibraryField]) throws {

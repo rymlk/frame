@@ -48,7 +48,7 @@ struct Media: Codable, Identifiable, Hashable {
     var savedValue: JSONValue {
         .object(["id": .number(Double(id)), "key": .string(key), "type": .string(type),
                  "category": .string(category), "title": .string(title), "year": .string(year),
-                 "overview": .string(String(overview.prefix(3000))), "poster": poster.map(JSONValue.string) ?? .null,
+                 "overview": .string(String(overview.prefix(1500))), "poster": poster.map(JSONValue.string) ?? .null,
                  "backdrop": backdrop.map(JSONValue.string) ?? .null, "rating": rating.map(JSONValue.string) ?? .null])
     }
     static func saved(_ value: JSONValue?) -> Media? {

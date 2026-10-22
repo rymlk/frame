@@ -41,7 +41,14 @@ final class FrameAPI: ObservableObject {
         var components = URLComponents(url:baseURL.appendingPathComponent(path),resolvingAgainstBaseURL:false)!
         components.queryItems = query.isEmpty ? nil : query
         let token = authenticated ? try await accessToken() : nil
-        return try await send(url:components.url!,method:method,body:body,token:token)
+        do { return try await send(url:components.url!,method:method,body:body,token:token) }
+        catch {
+            if authenticated, let failure = error as? HTTPFailure, failure.status == 401 {
+                try clearSession()
+                throw UserFacingError(message:"Ta session a expiré. Reconnecte-toi pour retrouver ta collection.")
+            }
+            throw error
+        }
     }
     func request<T: Decodable, B: Encodable>(_ path: String, method: String, body: B, authenticated: Bool = true) async throws -> T {
         try await request(path,method:method,body:JSONEncoder().encode(body),authenticated:authenticated)
