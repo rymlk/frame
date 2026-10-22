@@ -1,0 +1,12 @@
+**/node_modules/
+.env
+.env.*
+!.env.example
+**/Config.local.xcconfig
+**/xcuserdata/
+**/DerivedData/
+*.xcarchive
+*.ipa
+*.xcresult
+work/
+.DS_Store
